@@ -2,6 +2,8 @@
 
 Painel com cadastro de finders, indicacoes e upload de PDF, com persistencia em disco.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/thiagordacosta/finders)
+
 ## Rodar localmente
 
 ```bash
