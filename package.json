@@ -1,0 +1,12 @@
+{
+  "name": "finders-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard de finders com persistencia de dados e PDFs.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

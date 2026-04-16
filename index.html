@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reservas de Leads por Finder</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero-card">
+        <div class="gauge-card">
+          <div class="gauge-header">
+            <div>
+              <span class="section-label">Resultado</span>
+              <h2>Finders contabilizados</h2>
+            </div>
+            <span class="status-pill" id="eligibility-status">0 aptos no grafico</span>
+          </div>
+
+          <div class="criteria-note">
+            Entram no grafico somente os Finders com assinatura a partir de 01/04/2026 e indicacao de LEAD.
+          </div>
+
+          <div class="gauge-wrap">
+            <svg
+              class="gauge"
+              viewBox="0 0 420 250"
+              role="img"
+              aria-labelledby="gauge-title gauge-description"
+            >
+              <title id="gauge-title">Gauge de Finders elegiveis</title>
+              <desc id="gauge-description">
+                Grafico semicircular com a quantidade de Finders aptos para compor o resultado.
+              </desc>
+
+              <path
+                class="gauge-segment segment-1"
+                d="M 70 210 A 140 140 0 0 1 121 102"
+              />
+              <path
+                class="gauge-segment segment-2"
+                d="M 121 102 A 140 140 0 0 1 299 102"
+              />
+              <path
+                class="gauge-segment segment-3"
+                d="M 299 102 A 140 140 0 0 1 350 210"
+              />
+              <path
+                id="gauge-progress"
+                class="gauge-progress"
+                d="M 70 210 A 140 140 0 0 1 350 210"
+                pathLength="100"
+              />
+
+              <line class="gauge-baseline" x1="322" y1="210" x2="372" y2="210" />
+
+              <text class="gauge-tick" x="46" y="218">0</text>
+              <text class="gauge-tick" x="128" y="78" id="tick-mid-left">2</text>
+              <text class="gauge-tick" x="286" y="78" id="tick-mid-right">4</text>
+              <text class="gauge-tick" x="378" y="164" id="tick-max">6</text>
+            </svg>
+
+            <div class="gauge-center">
+              <strong id="lead-count">0</strong>
+              <span id="lead-label">Finders elegiveis</span>
+              <small id="lead-helper">Com os 2 criterios atendidos</small>
+            </div>
+          </div>
+        </div>
+
+        <section class="form-card" aria-labelledby="form-title">
+          <div class="form-copy">
+            <span class="section-label">Cadastro</span>
+            <h2 id="form-title">Registrar Finder</h2>
+            <p>Preencha os campos abaixo para decidir se o Finder entra no resultado do grafico.</p>
+          </div>
+
+          <form id="finder-form" class="finder-form">
+            <label class="field">
+              <span>Nome do Finder</span>
+              <input
+                id="finder-name"
+                name="finder-name"
+                type="text"
+                placeholder="Ex.: Amanda Silva"
+                required
+              />
+            </label>
+
+            <div class="toggle-grid">
+              <label class="toggle-card">
+                <input id="sent-minute" name="sent-minute" type="checkbox" />
+                <span class="toggle-copy">
+                  <strong>Assinada</strong>
+                  <small>Marque se a minuta ja foi assinada pelo Finder.</small>
+                </span>
+              </label>
+
+              <label class="toggle-card">
+                <input id="first-referral" name="first-referral" type="checkbox" />
+                <span class="toggle-copy">
+                  <strong>Indicacao</strong>
+                  <small>Marque se o Finder ja fez uma indicacao de LEAD.</small>
+                </span>
+              </label>
+            </div>
+
+            <button class="submit-button" type="submit">Adicionar Finder</button>
+          </form>
+        </section>
+
+        <section class="finder-list" aria-labelledby="ranking-title">
+          <div class="finder-list-header">
+            <div>
+              <span class="section-label">Resumo</span>
+              <h3 id="ranking-title">Finders registrados</h3>
+            </div>
+            <span class="summary-total" id="total-leads">0 finders</span>
+          </div>
+          <div class="finder-records" id="finder-grid"></div>
+        </section>
+
+        <div class="undo-toast" id="undo-toast" hidden>
+          <span class="undo-toast-text" id="undo-toast-text">Finder removido.</span>
+          <button class="undo-toast-button" id="undo-button" type="button">Undo</button>
+          <button class="undo-toast-close" id="undo-close-button" type="button" aria-label="Fechar alerta">x</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
