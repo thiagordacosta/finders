@@ -165,6 +165,24 @@ async function createFinderRecord(finder) {
   }
 }
 
+async function seedDefaultFinders() {
+  ensureSupabase();
+
+  const payload = defaultFinderData.map((finder) => ({
+    id: finder.id,
+    name: finder.name,
+    sent_minute: finder.sentMinute,
+    signed_at: finder.signedAt,
+    first_referral: finder.firstReferral,
+    created_at: finder.createdAt
+  }));
+
+  const { error } = await supabaseClient.from("finders").insert(payload);
+  if (error) {
+    throw error;
+  }
+}
+
 async function updateFinderRecord(finder) {
   ensureSupabase();
 
@@ -645,7 +663,13 @@ init();
 async function init() {
   try {
     ensureSupabase();
-    const loadedFinders = await fetchFinders();
+    let loadedFinders = await fetchFinders();
+
+    if (loadedFinders.length === 0) {
+      await seedDefaultFinders();
+      loadedFinders = await fetchFinders();
+    }
+
     finderData.splice(0, finderData.length, ...(loadedFinders.length ? loadedFinders : defaultFinderData));
     selectedFinderId = null;
     renderFinderCards();
