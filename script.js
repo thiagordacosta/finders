@@ -29,7 +29,6 @@ const defaultFinderData = initialFinderNames.map((name) => ({
 
 const FINDERS_STORAGE_KEY = "finders-dashboard-cache";
 const finderData = [];
-const supabaseClient = createSupabaseClient();
 
 let selectedFinderId = null;
 let lastDeletedFinder = null;
@@ -61,16 +60,8 @@ function slugify(value) {
     .replace(/^-|-$/g, "");
 }
 
-function createSupabaseClient() {
-  if (!window.supabase || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
-    return null;
-  }
-
-  return window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
-}
-
 function ensureSupabase() {
-  if (!supabaseClient) {
+  if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
     throw new Error("Supabase nao configurado.");
   }
 }
@@ -126,39 +117,69 @@ function replaceFinderData(nextFinders) {
   saveFindersToCache();
 }
 
-function getLeadIdentity(lead) {
-  if (typeof lead.id === "string" && lead.id) {
-    return lead.id;
-  }
+function getSupabaseHeaders(extraHeaders = {}) {
+  ensureSupabase();
 
-  return [lead.company, lead.cnpj, lead.fobValue, lead.date].map((value) => String(value ?? "").trim()).join("|");
+  return {
+    apikey: window.SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${window.SUPABASE_ANON_KEY}`,
+    ...extraHeaders
+  };
 }
 
-function mergeFinders(primaryFinders, secondaryFinders) {
-  const mergedFinders = normalizeFinders(primaryFinders);
-  const mergedById = new Map(mergedFinders.map((finder) => [finder.id, finder]));
+async function readErrorResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
 
-  normalizeFinders(secondaryFinders).forEach((cachedFinder) => {
-    const existingFinder = mergedById.get(cachedFinder.id);
-    if (!existingFinder) {
-      mergedFinders.push(cachedFinder);
-      mergedById.set(cachedFinder.id, cachedFinder);
-      return;
+  try {
+    if (contentType.includes("application/json")) {
+      return await response.json();
     }
 
-    const leadIds = new Set(existingFinder.leads.map((lead) => getLeadIdentity(lead)));
-    cachedFinder.leads.forEach((lead) => {
-      const leadIdentity = getLeadIdentity(lead);
-      if (leadIds.has(leadIdentity)) {
-        return;
-      }
+    const text = await response.text();
+    return text ? { message: text } : null;
+  } catch (error) {
+    return null;
+  }
+}
 
-      existingFinder.leads.push(lead);
-      leadIds.add(leadIdentity);
-    });
+async function supabaseRequest(path, options = {}) {
+  ensureSupabase();
+
+  const {
+    method = "GET",
+    body,
+    headers = {},
+    expectJson = true
+  } = options;
+
+  const response = await fetch(`${window.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/${path}`, {
+    method,
+    headers: getSupabaseHeaders({
+      "Content-Type": "application/json",
+      ...headers
+    }),
+    body: body === undefined ? undefined : JSON.stringify(body)
   });
 
-  return mergedFinders;
+  if (!response.ok) {
+    const errorPayload = await readErrorResponse(response);
+    if (errorPayload && typeof errorPayload === "object") {
+      throw errorPayload;
+    }
+
+    throw new Error(`Erro HTTP ${response.status}`);
+  }
+
+  if (!expectJson || response.status === 204) {
+    return null;
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return null;
+  }
+
+  return response.json();
 }
 
 function normalizeFinders(data) {
@@ -187,31 +208,9 @@ function normalizeFinders(data) {
 }
 
 async function fetchFinders() {
-  ensureSupabase();
-
-  const { data, error } = await supabaseClient
-    .from("finders")
-    .select(`
-      id,
-      name,
-      sent_minute,
-      signed_at,
-      first_referral,
-      created_at,
-      leads (
-        id,
-        company,
-        cnpj,
-        fob_value,
-        date,
-        created_at
-      )
-    `)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
+  const data = await supabaseRequest(
+    "finders?select=id,name,sent_minute,signed_at,first_referral,created_at,leads(id,company,cnpj,fob_value,date,created_at)&order=created_at.asc"
+  );
 
   return normalizeFinders(
     (data ?? []).map((finder) => ({
@@ -235,9 +234,7 @@ async function fetchFinders() {
 
 async function refreshFindersFromDatabase(preferredSelectedFinderId = selectedFinderId) {
   const loadedFinders = await fetchFinders();
-  const cachedFinders = loadFindersFromCache();
-  const nextFinders = loadedFinders.length ? mergeFinders(loadedFinders, cachedFinders) : mergeFinders(defaultFinderData, cachedFinders);
-  replaceFinderData(nextFinders);
+  replaceFinderData(loadedFinders.length ? loadedFinders : defaultFinderData);
 
   if (preferredSelectedFinderId && finderData.some((finder) => finder.id === preferredSelectedFinderId)) {
     selectedFinderId = preferredSelectedFinderId;
@@ -248,27 +245,9 @@ async function refreshFindersFromDatabase(preferredSelectedFinderId = selectedFi
 }
 
 async function createFinderRecord(finder) {
-  ensureSupabase();
-
-  const { error } = await supabaseClient.from("finders").insert({
-    id: finder.id,
-    name: finder.name,
-    sent_minute: finder.sentMinute,
-    signed_at: finder.signedAt,
-    first_referral: finder.firstReferral,
-    created_at: finder.createdAt
-  });
-
-  if (error) {
-    throw error;
-  }
-}
-
-async function upsertFinderRecord(finder) {
-  ensureSupabase();
-
-  const { error } = await supabaseClient.from("finders").upsert(
-    {
+  await supabaseRequest("finders", {
+    method: "POST",
+    body: {
       id: finder.id,
       name: finder.name,
       sent_minute: finder.sentMinute,
@@ -276,19 +255,32 @@ async function upsertFinderRecord(finder) {
       first_referral: finder.firstReferral,
       created_at: finder.createdAt
     },
-    {
-      onConflict: "id"
-    }
-  );
+    headers: {
+      Prefer: "return=minimal"
+    },
+    expectJson: false
+  });
+}
 
-  if (error) {
-    throw error;
-  }
+async function upsertFinderRecord(finder) {
+  await supabaseRequest("finders", {
+    method: "POST",
+    body: {
+      id: finder.id,
+      name: finder.name,
+      sent_minute: finder.sentMinute,
+      signed_at: finder.signedAt,
+      first_referral: finder.firstReferral,
+      created_at: finder.createdAt
+    },
+    headers: {
+      Prefer: "resolution=merge-duplicates,return=minimal"
+    },
+    expectJson: false
+  });
 }
 
 async function seedDefaultFinders() {
-  ensureSupabase();
-
   const payload = defaultFinderData.map((finder) => ({
     id: finder.id,
     name: finder.name,
@@ -298,37 +290,40 @@ async function seedDefaultFinders() {
     created_at: finder.createdAt
   }));
 
-  const { error } = await supabaseClient.from("finders").insert(payload);
-  if (error) {
-    throw error;
-  }
+  await supabaseRequest("finders", {
+    method: "POST",
+    body: payload,
+    headers: {
+      Prefer: "resolution=merge-duplicates,return=minimal"
+    },
+    expectJson: false
+  });
 }
 
 async function updateFinderRecord(finder) {
-  ensureSupabase();
-
-  const { error } = await supabaseClient
-    .from("finders")
-    .update({
+  await supabaseRequest(`finders?id=eq.${encodeURIComponent(finder.id)}`, {
+    method: "PATCH",
+    body: {
       name: finder.name,
       sent_minute: finder.sentMinute,
       signed_at: finder.signedAt,
       first_referral: finder.firstReferral
-    })
-    .eq("id", finder.id);
-
-  if (error) {
-    throw error;
-  }
+    },
+    headers: {
+      Prefer: "return=minimal"
+    },
+    expectJson: false
+  });
 }
 
 async function deleteFinderRecord(finderId) {
-  ensureSupabase();
-
-  const { error } = await supabaseClient.from("finders").delete().eq("id", finderId);
-  if (error) {
-    throw error;
-  }
+  await supabaseRequest(`finders?id=eq.${encodeURIComponent(finderId)}`, {
+    method: "DELETE",
+    headers: {
+      Prefer: "return=minimal"
+    },
+    expectJson: false
+  });
 }
 
 async function removeFinder(finder) {
@@ -364,6 +359,7 @@ async function removeFinder(finder) {
 
   try {
     await deleteFinderRecord(finder.id);
+    await refreshFindersFromDatabase();
     showUndoToast(finder.name);
   } catch (error) {
     finderData.splice(deletedSnapshot.index, 0, deletedSnapshot.finder);
@@ -377,8 +373,6 @@ async function removeFinder(finder) {
 }
 
 async function restoreFinderRecord(deletedFinder) {
-  ensureSupabase();
-
   await createFinderRecord(deletedFinder.finder);
 
   if ((deletedFinder.finder.leads ?? []).length === 0) {
@@ -395,33 +389,33 @@ async function restoreFinderRecord(deletedFinder) {
     created_at: lead.createdAt || new Date().toISOString()
   }));
 
-  const { error } = await supabaseClient.from("leads").insert(leadsPayload);
-  if (error) {
-    throw error;
-  }
+  await supabaseRequest("leads", {
+    method: "POST",
+    body: leadsPayload,
+    headers: {
+      Prefer: "return=minimal"
+    },
+    expectJson: false
+  });
 }
 
 async function createLeadRecord(finderId, lead) {
-  ensureSupabase();
-
-  const { data, error } = await supabaseClient
-    .from("leads")
-    .insert({
+  const data = await supabaseRequest("leads", {
+    method: "POST",
+    body: {
       finder_id: finderId,
       company: lead.company,
       cnpj: lead.cnpj,
       fob_value: lead.fobValue,
       date: lead.date,
       created_at: lead.createdAt
-    })
-    .select("id, created_at")
-    .single();
+    },
+    headers: {
+      Prefer: "return=representation"
+    }
+  });
 
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return Array.isArray(data) ? data[0] : data;
 }
 
 async function addLeadToFinder(finder, leadForm) {
@@ -454,28 +448,14 @@ async function addLeadToFinder(finder, leadForm) {
     createdAt: new Date().toISOString()
   };
 
-  const optimisticLead = {
-    ...newLead,
-    id: `local-${Date.now()}`
-  };
-
-  finder.leads.unshift(optimisticLead);
-  renderFinderCards();
-  updateGauge();
-  saveFindersToCache();
-
   try {
     await upsertFinderRecord(finder);
     await createLeadRecord(finder.id, newLead);
     await refreshFindersFromDatabase(finder.id);
     renderFinderCards();
   } catch (error) {
-    saveFindersToCache();
-    renderFinderCards();
     console.error(error);
-    window.alert(
-      `${getErrorMessage(error, "Nao foi possivel sincronizar com o Supabase agora.")}\n\nO LEAD foi salvo apenas neste navegador e continuara visivel apos recarregar a pagina.`
-    );
+    window.alert(getErrorMessage(error, "Nao foi possivel adicionar o LEAD no Supabase."));
   } finally {
     if (submitButton instanceof HTMLButtonElement) {
       submitButton.disabled = false;
@@ -484,12 +464,13 @@ async function addLeadToFinder(finder, leadForm) {
 }
 
 async function deleteLeadRecord(leadId) {
-  ensureSupabase();
-
-  const { error } = await supabaseClient.from("leads").delete().eq("id", leadId);
-  if (error) {
-    throw error;
-  }
+  await supabaseRequest(`leads?id=eq.${encodeURIComponent(leadId)}`, {
+    method: "DELETE",
+    headers: {
+      Prefer: "return=minimal"
+    },
+    expectJson: false
+  });
 }
 
 function isEligible(finder) {
@@ -731,9 +712,15 @@ function renderFinderCards() {
       }
 
       finder.name = nextName;
-      saveFindersToCache();
-      await updateFinderRecord(finder);
-      updateGauge();
+      try {
+        await updateFinderRecord(finder);
+        await refreshFindersFromDatabase(finder.id);
+        updateGauge();
+        renderFinderCards();
+      } catch (error) {
+        console.error(error);
+        window.alert(getErrorMessage(error, "Nao foi possivel atualizar o Finder no Supabase."));
+      }
     });
 
     card.querySelectorAll(".finder-status-input").forEach((input) => {
@@ -762,10 +749,15 @@ function renderFinderCards() {
           finder[field] = event.target.checked;
         }
 
-        renderFinderCards();
-        updateGauge();
-        saveFindersToCache();
-        await updateFinderRecord(finder);
+        try {
+          await updateFinderRecord(finder);
+          await refreshFindersFromDatabase(finder.id);
+          renderFinderCards();
+          updateGauge();
+        } catch (error) {
+          console.error(error);
+          window.alert(getErrorMessage(error, "Nao foi possivel atualizar o Finder no Supabase."));
+        }
       });
     });
 
@@ -797,12 +789,14 @@ function renderFinderCards() {
           return;
         }
 
-        finder.leads.splice(leadIndex, 1);
-        saveFindersToCache();
-        if (!String(lead.id).startsWith("local-")) {
+        try {
           await deleteLeadRecord(lead.id);
+          await refreshFindersFromDatabase(finder.id);
+          renderFinderCards();
+        } catch (error) {
+          console.error(error);
+          window.alert(getErrorMessage(error, "Nao foi possivel remover o LEAD no Supabase."));
         }
-        renderFinderCards();
       });
     });
 
@@ -853,13 +847,16 @@ finderForm.addEventListener("submit", async (event) => {
     leads: []
   };
 
-  finderData.push(newFinder);
-  selectedFinderId = newFinder.id;
-  saveFindersToCache();
-  await createFinderRecord(newFinder);
-  finderForm.reset();
-  renderFinderCards();
-  updateGauge();
+  try {
+    await createFinderRecord(newFinder);
+    await refreshFindersFromDatabase(newFinder.id);
+    finderForm.reset();
+    renderFinderCards();
+    updateGauge();
+  } catch (error) {
+    console.error(error);
+    window.alert(getErrorMessage(error, "Nao foi possivel salvar o Finder no Supabase."));
+  }
 });
 
 undoButton.addEventListener("click", async () => {
@@ -882,8 +879,7 @@ undoCloseButton.addEventListener("click", () => {
   hideUndoToast();
 });
 
-const cachedFindersOnBoot = loadFindersFromCache();
-replaceFinderData(cachedFindersOnBoot.length ? cachedFindersOnBoot : defaultFinderData);
+replaceFinderData(defaultFinderData);
 renderFinderCards();
 updateGauge();
 
@@ -899,13 +895,12 @@ async function init() {
       loadedFinders = await fetchFinders();
     }
 
-    replaceFinderData(loadedFinders.length ? mergeFinders(loadedFinders, cachedFindersOnBoot) : mergeFinders(defaultFinderData, cachedFindersOnBoot));
+    replaceFinderData(loadedFinders.length ? loadedFinders : defaultFinderData);
     selectedFinderId = null;
     renderFinderCards();
     updateGauge();
   } catch (error) {
-    const cachedFinders = loadFindersFromCache();
-    replaceFinderData(cachedFinders.length ? cachedFinders : defaultFinderData);
+    replaceFinderData(defaultFinderData);
     selectedFinderId = null;
     renderFinderCards();
     updateGauge();
