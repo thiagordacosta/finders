@@ -252,7 +252,7 @@ h1 {
   stroke-linecap: round;
   stroke-dasharray: 0 100;
   filter: drop-shadow(0 6px 10px rgba(36, 79, 134, 0.2));
-  transition: stroke-dasharray 0.7s ease;
+  transition: stroke-dasharray 0.16s ease-out;
 }
 
 .gauge-baseline {

@@ -486,9 +486,9 @@ function renderFinderCards() {
           finder[field] = event.target.checked;
         }
 
-        await updateFinderRecord(finder);
         renderFinderCards();
         updateGauge();
+        await updateFinderRecord(finder);
       });
     });
 
