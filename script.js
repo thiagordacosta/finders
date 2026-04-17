@@ -27,6 +27,7 @@ const defaultFinderData = initialFinderNames.map((name) => ({
   leads: []
 }));
 
+const FINDERS_STORAGE_KEY = "finders-dashboard-cache";
 const finderData = [];
 const supabaseClient = createSupabaseClient();
 
@@ -72,6 +73,33 @@ function ensureSupabase() {
   if (!supabaseClient) {
     throw new Error("Supabase nao configurado.");
   }
+}
+
+function saveFindersToCache() {
+  try {
+    window.localStorage.setItem(FINDERS_STORAGE_KEY, JSON.stringify(finderData));
+  } catch (error) {
+    console.error("Nao foi possivel salvar o cache local dos finders.", error);
+  }
+}
+
+function loadFindersFromCache() {
+  try {
+    const cached = window.localStorage.getItem(FINDERS_STORAGE_KEY);
+    if (!cached) {
+      return [];
+    }
+
+    return normalizeFinders(JSON.parse(cached));
+  } catch (error) {
+    console.error("Nao foi possivel carregar o cache local dos finders.", error);
+    return [];
+  }
+}
+
+function replaceFinderData(nextFinders) {
+  finderData.splice(0, finderData.length, ...normalizeFinders(nextFinders));
+  saveFindersToCache();
 }
 
 function normalizeFinders(data) {
@@ -144,6 +172,18 @@ async function fetchFinders() {
       }))
     }))
   );
+}
+
+async function refreshFindersFromDatabase(preferredSelectedFinderId = selectedFinderId) {
+  const loadedFinders = await fetchFinders();
+  replaceFinderData(loadedFinders.length ? loadedFinders : normalizeFinders(defaultFinderData));
+
+  if (preferredSelectedFinderId && finderData.some((finder) => finder.id === preferredSelectedFinderId)) {
+    selectedFinderId = preferredSelectedFinderId;
+    return;
+  }
+
+  selectedFinderId = finderData[0]?.id ?? null;
 }
 
 async function createFinderRecord(finder) {
@@ -237,6 +277,7 @@ async function removeFinder(finder) {
 
   renderFinderCards();
   updateGauge();
+  saveFindersToCache();
 
   try {
     await deleteFinderRecord(finder.id);
@@ -330,16 +371,27 @@ async function addLeadToFinder(finder, leadForm) {
     createdAt: new Date().toISOString()
   };
 
-  try {
-    const insertedLead = await createLeadRecord(finder.id, newLead);
-    finder.leads.unshift({
-      ...newLead,
-      id: insertedLead.id,
-      createdAt: insertedLead.created_at
-    });
+  const optimisticLead = {
+    ...newLead,
+    id: `pending-${Date.now()}`
+  };
 
+  finder.leads.unshift(optimisticLead);
+  renderFinderCards();
+  updateGauge();
+  saveFindersToCache();
+
+  try {
+    await createLeadRecord(finder.id, newLead);
+    await refreshFindersFromDatabase(finder.id);
     renderFinderCards();
   } catch (error) {
+    const optimisticLeadIndex = finder.leads.findIndex((lead) => lead.id === optimisticLead.id);
+    if (optimisticLeadIndex !== -1) {
+      finder.leads.splice(optimisticLeadIndex, 1);
+    }
+    saveFindersToCache();
+    renderFinderCards();
     console.error(error);
     window.alert("Nao foi possivel adicionar o LEAD agora. Tente novamente.");
   } finally {
@@ -597,6 +649,7 @@ function renderFinderCards() {
       }
 
       finder.name = nextName;
+      saveFindersToCache();
       await updateFinderRecord(finder);
       updateGauge();
     });
@@ -629,6 +682,7 @@ function renderFinderCards() {
 
         renderFinderCards();
         updateGauge();
+        saveFindersToCache();
         await updateFinderRecord(finder);
       });
     });
@@ -663,6 +717,7 @@ function renderFinderCards() {
 
         finder.leads.splice(leadIndex, 1);
         await deleteLeadRecord(lead.id);
+        saveFindersToCache();
         renderFinderCards();
       });
     });
@@ -716,6 +771,7 @@ finderForm.addEventListener("submit", async (event) => {
 
   finderData.push(newFinder);
   selectedFinderId = newFinder.id;
+  saveFindersToCache();
   await createFinderRecord(newFinder);
   finderForm.reset();
   renderFinderCards();
@@ -729,6 +785,7 @@ undoButton.addEventListener("click", async () => {
 
   finderData.splice(lastDeletedFinder.index, 0, lastDeletedFinder.finder);
   selectedFinderId = lastDeletedFinder.previousSelectedFinderId ?? lastDeletedFinder.finder.id;
+  saveFindersToCache();
   await restoreFinderRecord(lastDeletedFinder);
   lastDeletedFinder = null;
   renderFinderCards();
@@ -741,7 +798,8 @@ undoCloseButton.addEventListener("click", () => {
   hideUndoToast();
 });
 
-finderData.splice(0, finderData.length, ...normalizeFinders(defaultFinderData));
+const cachedFindersOnBoot = loadFindersFromCache();
+replaceFinderData(cachedFindersOnBoot.length ? cachedFindersOnBoot : defaultFinderData);
 renderFinderCards();
 updateGauge();
 
@@ -757,12 +815,13 @@ async function init() {
       loadedFinders = await fetchFinders();
     }
 
-    finderData.splice(0, finderData.length, ...(loadedFinders.length ? loadedFinders : normalizeFinders(defaultFinderData)));
+    replaceFinderData(loadedFinders.length ? loadedFinders : defaultFinderData);
     selectedFinderId = null;
     renderFinderCards();
     updateGauge();
   } catch (error) {
-    finderData.splice(0, finderData.length, ...normalizeFinders(defaultFinderData));
+    const cachedFinders = loadFindersFromCache();
+    replaceFinderData(cachedFinders.length ? cachedFinders : defaultFinderData);
     selectedFinderId = null;
     renderFinderCards();
     updateGauge();
