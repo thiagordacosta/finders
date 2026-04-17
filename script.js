@@ -325,9 +325,23 @@ function getSortedFinders() {
   return [...finderData].sort((left, right) => {
     const leftDate = parseBrazilianDate(left.signedAt);
     const rightDate = parseBrazilianDate(right.signedAt);
+    const leftCreatedAt = Date.parse(left.createdAt || "");
+    const rightCreatedAt = Date.parse(right.createdAt || "");
 
     if (!leftDate && !rightDate) {
-      return 0;
+      if (Number.isNaN(leftCreatedAt) && Number.isNaN(rightCreatedAt)) {
+        return left.name.localeCompare(right.name, "pt-BR");
+      }
+
+      if (Number.isNaN(leftCreatedAt)) {
+        return 1;
+      }
+
+      if (Number.isNaN(rightCreatedAt)) {
+        return -1;
+      }
+
+      return rightCreatedAt - leftCreatedAt;
     }
 
     if (!leftDate) {
@@ -338,7 +352,24 @@ function getSortedFinders() {
       return -1;
     }
 
-    return rightDate.getTime() - leftDate.getTime();
+    const signedAtDifference = rightDate.getTime() - leftDate.getTime();
+    if (signedAtDifference !== 0) {
+      return signedAtDifference;
+    }
+
+    if (Number.isNaN(leftCreatedAt) && Number.isNaN(rightCreatedAt)) {
+      return left.name.localeCompare(right.name, "pt-BR");
+    }
+
+    if (Number.isNaN(leftCreatedAt)) {
+      return 1;
+    }
+
+    if (Number.isNaN(rightCreatedAt)) {
+      return -1;
+    }
+
+    return rightCreatedAt - leftCreatedAt;
   });
 }
 
