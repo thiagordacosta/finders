@@ -203,6 +203,28 @@ async function createFinderRecord(finder) {
   }
 }
 
+async function upsertFinderRecord(finder) {
+  ensureSupabase();
+
+  const { error } = await supabaseClient.from("finders").upsert(
+    {
+      id: finder.id,
+      name: finder.name,
+      sent_minute: finder.sentMinute,
+      signed_at: finder.signedAt,
+      first_referral: finder.firstReferral,
+      created_at: finder.createdAt
+    },
+    {
+      onConflict: "id"
+    }
+  );
+
+  if (error) {
+    throw error;
+  }
+}
+
 async function seedDefaultFinders() {
   ensureSupabase();
 
@@ -382,6 +404,7 @@ async function addLeadToFinder(finder, leadForm) {
   saveFindersToCache();
 
   try {
+    await upsertFinderRecord(finder);
     await createLeadRecord(finder.id, newLead);
     await refreshFindersFromDatabase(finder.id);
     renderFinderCards();
