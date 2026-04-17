@@ -75,6 +75,30 @@ function ensureSupabase() {
   }
 }
 
+function getErrorMessage(error, fallbackMessage) {
+  if (!error) {
+    return fallbackMessage;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (typeof error.message === "string" && error.message) {
+    return error.message;
+  }
+
+  if (typeof error.error_description === "string" && error.error_description) {
+    return error.error_description;
+  }
+
+  if (typeof error.details === "string" && error.details) {
+    return error.details;
+  }
+
+  return fallbackMessage;
+}
+
 function saveFindersToCache() {
   try {
     window.localStorage.setItem(FINDERS_STORAGE_KEY, JSON.stringify(finderData));
@@ -311,7 +335,7 @@ async function removeFinder(finder) {
     renderFinderCards();
     updateGauge();
     console.error(error);
-    window.alert("Nao foi possivel remover o Finder agora. Tente novamente.");
+    window.alert(getErrorMessage(error, "Nao foi possivel remover o Finder agora. Tente novamente."));
   }
 }
 
@@ -416,7 +440,7 @@ async function addLeadToFinder(finder, leadForm) {
     saveFindersToCache();
     renderFinderCards();
     console.error(error);
-    window.alert("Nao foi possivel adicionar o LEAD agora. Tente novamente.");
+    window.alert(getErrorMessage(error, "Nao foi possivel adicionar o LEAD agora. Tente novamente."));
   } finally {
     if (submitButton instanceof HTMLButtonElement) {
       submitButton.disabled = false;
@@ -849,6 +873,6 @@ async function init() {
     renderFinderCards();
     updateGauge();
     console.error(error);
-    window.alert("Configure o Supabase antes do deploy. Veja o README para preencher o arquivo supabase-config.js.");
+    window.alert(getErrorMessage(error, "Configure o Supabase antes do deploy. Veja o README para preencher o arquivo supabase-config.js."));
   }
 }
