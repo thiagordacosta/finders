@@ -315,6 +315,10 @@ h1 {
   border: 1px solid transparent;
 }
 
+.finder-item--loading {
+  opacity: 0.82;
+}
+
 .finder-item.is-active {
   border-color: rgba(78, 136, 184, 0.28);
   background: rgba(185, 228, 239, 0.24);
@@ -364,6 +368,18 @@ h1 {
   font-weight: 700;
   color: var(--text);
   background: rgba(255, 255, 255, 0.96);
+}
+
+.finder-name-preview {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(126, 183, 207, 0.18);
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .finder-name-button {

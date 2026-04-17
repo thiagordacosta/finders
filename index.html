@@ -129,6 +129,56 @@
       </section>
     </main>
 
+    <script>
+      (function renderInitialFinders() {
+        const initialFinders = [
+          "Fernando Castro",
+          "Silas Pedro",
+          "Sergio Parolo",
+          "Tiago Alves",
+          "Leo Lemes",
+          "WLADEMIR HENRIQUE",
+          "Carlos Jordaky",
+          "Fred Almeida",
+          "Alexandre Gabriel Mori",
+          "Gustavo Bolsi",
+          "GABRIEL FERRAZ",
+          "Marino (Workng capital)",
+          "Jean Garellha",
+          "Luciano",
+          "Gilli Basile Advogados",
+          "Gerson - Cintia"
+        ];
+
+        const finderGrid = document.getElementById("finder-grid");
+        const totalLeads = document.getElementById("total-leads");
+
+        if (!finderGrid || !totalLeads) {
+          return;
+        }
+
+        totalLeads.textContent = `${initialFinders.length} finders`;
+        finderGrid.innerHTML = initialFinders
+          .map(
+            (name) => `
+              <article class="finder-item finder-item--loading">
+                <div class="finder-name-group">
+                  <div class="finder-name-preview">${name}</div>
+                </div>
+                <span>Carregando...</span>
+                <b>Pendente</b>
+                <div class="finder-edit-grid">
+                  <div class="finder-switch is-no"><span>Assinada</span></div>
+                  <div class="finder-actions">
+                    <div class="finder-switch is-no"><span>Indicacao</span></div>
+                  </div>
+                </div>
+              </article>
+            `
+          )
+          .join("");
+      })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./supabase-config.js"></script>
     <script src="./script.js"></script>
