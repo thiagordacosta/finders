@@ -33,6 +33,7 @@ const finderData = [];
 let selectedFinderId = null;
 let lastDeletedFinder = null;
 let undoToastTimeoutId = null;
+let editingLeadId = null;
 
 const finderForm = document.getElementById("finder-form");
 const finderNameInput = document.getElementById("finder-name");
@@ -418,6 +419,22 @@ async function createLeadRecord(finderId, lead) {
   return Array.isArray(data) ? data[0] : data;
 }
 
+async function updateLeadRecord(lead) {
+  await supabaseRequest(`leads?id=eq.${encodeURIComponent(lead.id)}`, {
+    method: "PATCH",
+    body: {
+      company: lead.company,
+      cnpj: lead.cnpj,
+      fob_value: lead.fobValue,
+      date: lead.date
+    },
+    headers: {
+      Prefer: "return=minimal"
+    },
+    expectJson: false
+  });
+}
+
 async function addLeadToFinder(finder, leadForm) {
   const formData = new FormData(leadForm);
   const company = String(formData.get("lead-company") ?? "").trim();
@@ -605,29 +622,72 @@ function showUndoToast(name) {
   }, 8000);
 }
 
+function getLeadItemMarkup(lead, index) {
+  const isEditing = editingLeadId === lead.id;
+
+  if (isEditing) {
+    return `
+      <article class="lead-item lead-item--editing">
+        <form class="lead-edit-form" data-lead-index="${index}">
+          <div class="lead-item-header">
+            <strong>Editando LEAD</strong>
+            <div class="lead-item-actions">
+              <button class="lead-save-button" type="submit" aria-label="Salvar LEAD" title="Salvar LEAD">Salvar</button>
+              <button class="lead-cancel-button" type="button" data-lead-index="${index}" aria-label="Cancelar edicao" title="Cancelar edicao">Cancelar</button>
+            </div>
+          </div>
+          <div class="lead-edit-grid">
+            <label class="field">
+              <span>Empresa *</span>
+              <input name="edit-lead-company" type="text" value="${lead.company}" required />
+            </label>
+            <label class="field">
+              <span>CNPJ *</span>
+              <input name="edit-lead-cnpj" type="text" value="${lead.cnpj}" required />
+            </label>
+            <label class="field">
+              <span>Valor FOB *</span>
+              <input name="edit-lead-fob-value" type="text" value="${lead.fobValue}" required />
+            </label>
+            <label class="field">
+              <span>Data da indicacao *</span>
+              <input name="edit-lead-date" type="text" value="${lead.date}" required />
+            </label>
+          </div>
+        </form>
+      </article>
+    `;
+  }
+
+  return `
+    <article class="lead-item">
+      <div class="lead-item-header">
+        <strong>${lead.company}</strong>
+        <div class="lead-item-actions">
+          <button class="lead-edit-button" type="button" data-lead-index="${index}" aria-label="Editar LEAD" title="Editar LEAD">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zm14.71-9.04a1.003 1.003 0 0 0 0-1.42l-2.5-2.5a1.003 1.003 0 0 0-1.42 0l-1.96 1.96 3.75 3.75 2.13-1.79z" />
+            </svg>
+          </button>
+          <button class="lead-remove-button" type="button" data-lead-index="${index}" aria-label="Excluir LEAD" title="Excluir LEAD">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 12c-1.1 0-2-.9-2-2V8h12v11c0 1.1-.9 2-2 2H8z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <span>CNPJ: ${lead.cnpj}</span>
+      <span>Valor FOB: ${lead.fobValue}</span>
+      <small>Indicacao em ${lead.date}</small>
+    </article>
+  `;
+}
+
 function getLeadMarkup(finder) {
   const leads = finder.leads ?? [];
 
   const leadItems = leads.length
-    ? leads
-        .map(
-          (lead, index) => `
-            <article class="lead-item">
-              <div class="lead-item-header">
-                <strong>${lead.company}</strong>
-                <button class="lead-remove-button" type="button" data-lead-index="${index}" aria-label="Excluir LEAD" title="Excluir LEAD">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 12c-1.1 0-2-.9-2-2V8h12v11c0 1.1-.9 2-2 2H8z" />
-                  </svg>
-                </button>
-              </div>
-              <span>CNPJ: ${lead.cnpj}</span>
-              <span>Valor FOB: ${lead.fobValue}</span>
-              <small>Indicacao em ${lead.date}</small>
-            </article>
-          `
-        )
-        .join("")
+    ? leads.map((lead, index) => getLeadItemMarkup(lead, index)).join("")
     : '<div class="lead-empty">Este Finder ainda nao possui indicacoes de LEAD registradas.</div>';
 
   return `
@@ -775,6 +835,67 @@ function renderFinderCards() {
         await addLeadToFinder(finder, leadForm);
       });
     }
+
+    card.querySelectorAll(".lead-edit-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const leadIndex = Number(button.dataset.leadIndex);
+        const lead = finder.leads[leadIndex];
+        if (!lead) {
+          return;
+        }
+
+        editingLeadId = lead.id;
+        renderFinderCards();
+      });
+    });
+
+    card.querySelectorAll(".lead-cancel-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        editingLeadId = null;
+        renderFinderCards();
+      });
+    });
+
+    card.querySelectorAll(".lead-edit-form").forEach((form) => {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const leadIndex = Number(form.dataset.leadIndex);
+        const lead = finder.leads[leadIndex];
+        if (!lead) {
+          return;
+        }
+
+        const formData = new FormData(form);
+        const updatedLead = {
+          ...lead,
+          company: String(formData.get("edit-lead-company") ?? "").trim(),
+          cnpj: String(formData.get("edit-lead-cnpj") ?? "").trim(),
+          fobValue: String(formData.get("edit-lead-fob-value") ?? "").trim(),
+          date: String(formData.get("edit-lead-date") ?? "").trim()
+        };
+
+        if (!updatedLead.company || !updatedLead.cnpj || !updatedLead.fobValue || !updatedLead.date) {
+          window.alert("Preencha todos os campos do LEAD antes de salvar.");
+          return;
+        }
+
+        if (!isValidBrazilianDate(updatedLead.date)) {
+          window.alert("Use uma data valida no formato dd/mm/aaaa para a indicacao.");
+          return;
+        }
+
+        try {
+          await updateLeadRecord(updatedLead);
+          editingLeadId = null;
+          await refreshFindersFromDatabase(finder.id);
+          renderFinderCards();
+        } catch (error) {
+          console.error(error);
+          window.alert(getErrorMessage(error, "Nao foi possivel editar o LEAD no Supabase."));
+        }
+      });
+    });
 
     card.querySelectorAll(".lead-remove-button").forEach((button) => {
       button.addEventListener("click", async () => {

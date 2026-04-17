@@ -536,6 +536,11 @@ h1 {
   background: rgba(244, 247, 251, 0.88);
 }
 
+.lead-item--editing {
+  border: 1px solid rgba(78, 136, 184, 0.24);
+  background: rgba(255, 255, 255, 0.94);
+}
+
 .lead-item strong,
 .lead-item span,
 .lead-item small {
@@ -547,6 +552,23 @@ h1 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.lead-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lead-edit-form {
+  display: grid;
+  gap: 14px;
+}
+
+.lead-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .lead-item span,
@@ -582,10 +604,46 @@ h1 {
   cursor: pointer;
 }
 
+.lead-edit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  color: white;
+  background: var(--accent-deep);
+  cursor: pointer;
+}
+
+.lead-edit-button svg,
 .lead-remove-button svg {
   width: 16px;
   height: 16px;
   fill: currentColor;
+}
+
+.lead-save-button,
+.lead-cancel-button {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lead-save-button {
+  color: white;
+  background: var(--accent-deep);
+}
+
+.lead-cancel-button {
+  color: var(--text);
+  background: rgba(120, 148, 173, 0.14);
 }
 
 .lead-item small {
@@ -605,7 +663,8 @@ h1 {
 
 @media (max-width: 900px) {
   .toggle-grid,
-  .lead-form-grid {
+  .lead-form-grid,
+  .lead-edit-grid {
     grid-template-columns: 1fr;
   }
 
