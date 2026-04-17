@@ -266,7 +266,7 @@ async function deleteLeadRecord(leadId) {
 }
 
 function isEligible(finder) {
-  return finder.sentMinute && finder.firstReferral;
+  return finder.sentMinute && finder.firstReferral && isSignedInApril(finder.signedAt);
 }
 
 function isValidBrazilianDate(value) {
@@ -306,6 +306,15 @@ function requestSignedDate(currentValue = "") {
   }
 
   return formatted;
+}
+
+function isSignedInApril(signedAt) {
+  const signedDate = parseBrazilianDate(signedAt);
+  if (!signedDate) {
+    return false;
+  }
+
+  return signedDate.getMonth() === 3;
 }
 
 function getEligibleFinders() {
