@@ -126,6 +126,41 @@ function replaceFinderData(nextFinders) {
   saveFindersToCache();
 }
 
+function getLeadIdentity(lead) {
+  if (typeof lead.id === "string" && lead.id) {
+    return lead.id;
+  }
+
+  return [lead.company, lead.cnpj, lead.fobValue, lead.date].map((value) => String(value ?? "").trim()).join("|");
+}
+
+function mergeFinders(primaryFinders, secondaryFinders) {
+  const mergedFinders = normalizeFinders(primaryFinders);
+  const mergedById = new Map(mergedFinders.map((finder) => [finder.id, finder]));
+
+  normalizeFinders(secondaryFinders).forEach((cachedFinder) => {
+    const existingFinder = mergedById.get(cachedFinder.id);
+    if (!existingFinder) {
+      mergedFinders.push(cachedFinder);
+      mergedById.set(cachedFinder.id, cachedFinder);
+      return;
+    }
+
+    const leadIds = new Set(existingFinder.leads.map((lead) => getLeadIdentity(lead)));
+    cachedFinder.leads.forEach((lead) => {
+      const leadIdentity = getLeadIdentity(lead);
+      if (leadIds.has(leadIdentity)) {
+        return;
+      }
+
+      existingFinder.leads.push(lead);
+      leadIds.add(leadIdentity);
+    });
+  });
+
+  return mergedFinders;
+}
+
 function normalizeFinders(data) {
   if (!Array.isArray(data)) {
     return [...defaultFinderData];
@@ -200,7 +235,9 @@ async function fetchFinders() {
 
 async function refreshFindersFromDatabase(preferredSelectedFinderId = selectedFinderId) {
   const loadedFinders = await fetchFinders();
-  replaceFinderData(loadedFinders.length ? loadedFinders : normalizeFinders(defaultFinderData));
+  const cachedFinders = loadFindersFromCache();
+  const nextFinders = loadedFinders.length ? mergeFinders(loadedFinders, cachedFinders) : mergeFinders(defaultFinderData, cachedFinders);
+  replaceFinderData(nextFinders);
 
   if (preferredSelectedFinderId && finderData.some((finder) => finder.id === preferredSelectedFinderId)) {
     selectedFinderId = preferredSelectedFinderId;
@@ -419,7 +456,7 @@ async function addLeadToFinder(finder, leadForm) {
 
   const optimisticLead = {
     ...newLead,
-    id: `pending-${Date.now()}`
+    id: `local-${Date.now()}`
   };
 
   finder.leads.unshift(optimisticLead);
@@ -433,14 +470,12 @@ async function addLeadToFinder(finder, leadForm) {
     await refreshFindersFromDatabase(finder.id);
     renderFinderCards();
   } catch (error) {
-    const optimisticLeadIndex = finder.leads.findIndex((lead) => lead.id === optimisticLead.id);
-    if (optimisticLeadIndex !== -1) {
-      finder.leads.splice(optimisticLeadIndex, 1);
-    }
     saveFindersToCache();
     renderFinderCards();
     console.error(error);
-    window.alert(getErrorMessage(error, "Nao foi possivel adicionar o LEAD agora. Tente novamente."));
+    window.alert(
+      `${getErrorMessage(error, "Nao foi possivel sincronizar com o Supabase agora.")}\n\nO LEAD foi salvo apenas neste navegador e continuara visivel apos recarregar a pagina.`
+    );
   } finally {
     if (submitButton instanceof HTMLButtonElement) {
       submitButton.disabled = false;
@@ -763,8 +798,10 @@ function renderFinderCards() {
         }
 
         finder.leads.splice(leadIndex, 1);
-        await deleteLeadRecord(lead.id);
         saveFindersToCache();
+        if (!String(lead.id).startsWith("local-")) {
+          await deleteLeadRecord(lead.id);
+        }
         renderFinderCards();
       });
     });
@@ -862,7 +899,7 @@ async function init() {
       loadedFinders = await fetchFinders();
     }
 
-    replaceFinderData(loadedFinders.length ? loadedFinders : defaultFinderData);
+    replaceFinderData(loadedFinders.length ? mergeFinders(loadedFinders, cachedFindersOnBoot) : mergeFinders(defaultFinderData, cachedFindersOnBoot));
     selectedFinderId = null;
     renderFinderCards();
     updateGauge();
