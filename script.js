@@ -928,6 +928,7 @@ function renderFinderCards() {
 function updateGauge() {
   const eligibleFinders = getEligibleFinders();
   const totalFinders = finderData.length;
+  const totalReservedLeads = finderData.reduce((sum, finder) => sum + (finder.leads?.length ?? 0), 0);
   const gaugeMax = Math.max(6, totalFinders);
   const progress = totalFinders === 0 ? 0 : (eligibleFinders.length / gaugeMax) * 100;
 
@@ -937,7 +938,7 @@ function updateGauge() {
 
   gaugeProgress.style.strokeDasharray = `${progress} 100`;
   leadCount.textContent = String(eligibleFinders.length);
-  totalLeads.textContent = `${totalFinders} finders`;
+  totalLeads.textContent = `${totalFinders} finders | ${totalReservedLeads} leads reservados`;
   eligibilityStatus.textContent = `${eligibleFinders.length} aptos no grafico`;
 }
 
