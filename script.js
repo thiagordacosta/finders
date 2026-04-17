@@ -30,6 +30,7 @@ const defaultFinderData = initialFinderNames.map((name) => ({
 }));
 
 const finderData = [];
+const supabaseClient = createSupabaseClient();
 
 let selectedFinderId = null;
 let lastDeletedFinder = null;
@@ -61,6 +62,20 @@ function slugify(value) {
     .replace(/^-|-$/g, "");
 }
 
+function createSupabaseClient() {
+  if (!window.supabase || !window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
+    return null;
+  }
+
+  return window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+}
+
+function ensureSupabase() {
+  if (!supabaseClient) {
+    throw new Error("Supabase nao configurado.");
+  }
+}
+
 function normalizeFinders(data) {
   if (!Array.isArray(data)) {
     return [...defaultFinderData];
@@ -75,62 +90,163 @@ function normalizeFinders(data) {
     createdAt: typeof finder.createdAt === "string" && finder.createdAt ? finder.createdAt : new Date().toISOString(),
     leads: Array.isArray(finder.leads)
       ? finder.leads.map((lead) => ({
+          id: typeof lead.id === "string" ? lead.id : "",
           company: typeof lead.company === "string" ? lead.company : "",
-          cnpj:
-            typeof lead.cnpj === "string"
-              ? lead.cnpj
-              : typeof lead.contact === "string"
-                ? lead.contact
-                : "",
-          fobValue:
-            typeof lead.fobValue === "string"
-              ? lead.fobValue
-              : typeof lead.stage === "string"
-                ? lead.stage
-                : "",
+          cnpj: typeof lead.cnpj === "string" ? lead.cnpj : "",
+          fobValue: typeof lead.fobValue === "string" ? lead.fobValue : "",
           date: typeof lead.date === "string" ? lead.date : "",
-          pdfName:
-            typeof lead.pdfName === "string"
-              ? lead.pdfName
-              : typeof lead.pdfFileName === "string"
-                ? lead.pdfFileName
-                : "",
-          pdfUrl: typeof lead.pdfUrl === "string" ? lead.pdfUrl : ""
+          createdAt: typeof lead.createdAt === "string" ? lead.createdAt : new Date().toISOString()
         }))
       : []
   }));
 }
 
 async function fetchFinders() {
-  const response = await fetch("/api/finders");
-  if (!response.ok) {
-    throw new Error("Falha ao carregar os dados.");
+  ensureSupabase();
+
+  const { data, error } = await supabaseClient
+    .from("finders")
+    .select(`
+      id,
+      name,
+      sent_minute,
+      signed_at,
+      first_referral,
+      created_at,
+      leads (
+        id,
+        company,
+        cnpj,
+        fob_value,
+        date,
+        created_at
+      )
+    `)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
   }
 
-  return normalizeFinders(await response.json());
+  return normalizeFinders(
+    (data ?? []).map((finder) => ({
+      id: finder.id,
+      name: finder.name,
+      sentMinute: finder.sent_minute,
+      signedAt: finder.signed_at,
+      firstReferral: finder.first_referral,
+      createdAt: finder.created_at,
+      leads: (finder.leads ?? []).map((lead) => ({
+        id: lead.id,
+        company: lead.company,
+        cnpj: lead.cnpj,
+        fobValue: lead.fob_value,
+        date: lead.date,
+        createdAt: lead.created_at
+      }))
+    }))
+  );
 }
 
-async function saveFinderData() {
-  const response = await fetch("/api/finders", {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(finderData)
+async function createFinderRecord(finder) {
+  ensureSupabase();
+
+  const { error } = await supabaseClient.from("finders").insert({
+    id: finder.id,
+    name: finder.name,
+    sent_minute: finder.sentMinute,
+    signed_at: finder.signedAt,
+    first_referral: finder.firstReferral,
+    created_at: finder.createdAt
   });
 
-  if (!response.ok) {
-    throw new Error("Falha ao salvar os dados.");
+  if (error) {
+    throw error;
   }
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
-    reader.readAsDataURL(file);
-  });
+async function updateFinderRecord(finder) {
+  ensureSupabase();
+
+  const { error } = await supabaseClient
+    .from("finders")
+    .update({
+      name: finder.name,
+      sent_minute: finder.sentMinute,
+      signed_at: finder.signedAt,
+      first_referral: finder.firstReferral
+    })
+    .eq("id", finder.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function deleteFinderRecord(finderId) {
+  ensureSupabase();
+
+  const { error } = await supabaseClient.from("finders").delete().eq("id", finderId);
+  if (error) {
+    throw error;
+  }
+}
+
+async function restoreFinderRecord(deletedFinder) {
+  ensureSupabase();
+
+  await createFinderRecord(deletedFinder.finder);
+
+  if ((deletedFinder.finder.leads ?? []).length === 0) {
+    return;
+  }
+
+  const leadsPayload = deletedFinder.finder.leads.map((lead) => ({
+    id: lead.id,
+    finder_id: deletedFinder.finder.id,
+    company: lead.company,
+    cnpj: lead.cnpj,
+    fob_value: lead.fobValue,
+    date: lead.date,
+    created_at: lead.createdAt || new Date().toISOString()
+  }));
+
+  const { error } = await supabaseClient.from("leads").insert(leadsPayload);
+  if (error) {
+    throw error;
+  }
+}
+
+async function createLeadRecord(finderId, lead) {
+  ensureSupabase();
+
+  const { data, error } = await supabaseClient
+    .from("leads")
+    .insert({
+      finder_id: finderId,
+      company: lead.company,
+      cnpj: lead.cnpj,
+      fob_value: lead.fobValue,
+      date: lead.date,
+      created_at: lead.createdAt
+    })
+    .select("id, created_at")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+async function deleteLeadRecord(leadId) {
+  ensureSupabase();
+
+  const { error } = await supabaseClient.from("leads").delete().eq("id", leadId);
+  if (error) {
+    throw error;
+  }
 }
 
 function isEligible(finder) {
@@ -191,15 +307,6 @@ function getEligibleFinders() {
   return finderData.filter(isEligible);
 }
 
-function formatCreatedAt(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Data indisponivel";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR").format(date);
-}
-
 function getSortedFinders() {
   return [...finderData].reverse();
 }
@@ -240,16 +347,12 @@ function getLeadMarkup(finder) {
                 <strong>${lead.company}</strong>
                 <button class="lead-remove-button" type="button" data-lead-index="${index}" aria-label="Excluir LEAD" title="Excluir LEAD">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 12c-1.1 0-2-.9-2-2V8h12v11c0 1.1-.9 2-2 2H8z"
-                    />
+                    <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 12c-1.1 0-2-.9-2-2V8h12v11c0 1.1-.9 2-2 2H8z" />
                   </svg>
                 </button>
               </div>
               <span>CNPJ: ${lead.cnpj}</span>
               <span>Valor FOB: ${lead.fobValue}</span>
-              ${lead.pdfName ? `<span>PDF: ${lead.pdfName}</span>` : ""}
-              ${lead.pdfUrl ? `<a class="lead-pdf-link" href="${lead.pdfUrl}" target="_blank" rel="noreferrer">Abrir PDF</a>` : ""}
               <small>Indicacao em ${lead.date}</small>
             </article>
           `
@@ -285,10 +388,6 @@ function getLeadMarkup(finder) {
             <input name="lead-date" type="text" placeholder="Ex.: 16/04/2026" required />
           </label>
         </div>
-        <label class="field field-file">
-          <span>Arquivo PDF</span>
-          <input name="lead-pdf" type="file" accept="application/pdf,.pdf" />
-        </label>
         <button class="submit-button" type="submit">Adicionar LEAD ao Finder</button>
       </form>
       <div class="lead-list">${leadItems}</div>
@@ -322,31 +421,31 @@ function renderFinderCards() {
           </label>
           <button class="finder-remove-button" type="button" aria-label="Remover Finder" title="Remover Finder">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 12c-1.1 0-2-.9-2-2V8h12v11c0 1.1-.9 2-2 2H8z"
-              />
+              <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v8h-2V9zm4 0h2v8h-2V9zM7 9h2v8H7V9zm1 12c-1.1 0-2-.9-2-2V8h12v11c0 1.1-.9 2-2 2H8z" />
             </svg>
           </button>
         </div>
       </div>
       ${finder.id === selectedFinderId ? getLeadMarkup(finder) : ""}
     `;
+
     card.querySelector(".finder-name-button").addEventListener("click", () => {
       selectedFinderId = selectedFinderId === finder.id ? null : finder.id;
       renderFinderCards();
     });
+
     const nameInput = card.querySelector(".finder-name-input");
     nameInput.addEventListener("input", async () => {
       const nextName = nameInput.value.trim();
-
       if (!nextName) {
         return;
       }
 
       finder.name = nextName;
-      await saveFinderData();
+      await updateFinderRecord(finder);
       updateGauge();
     });
+
     card.querySelectorAll(".finder-status-input").forEach((input) => {
       input.addEventListener("change", async (event) => {
         const field = event.target.dataset.field;
@@ -355,11 +454,9 @@ function renderFinderCards() {
           if (event.target.checked) {
             const signedAt = requestSignedDate(finder.signedAt);
             if (!signedAt) {
-              event.target.checked = false;
               renderFinderCards();
               return;
             }
-
             finder.sentMinute = true;
             finder.signedAt = signedAt;
           } else {
@@ -368,7 +465,6 @@ function renderFinderCards() {
               renderFinderCards();
               return;
             }
-
             finder.sentMinute = false;
             finder.signedAt = "";
           }
@@ -376,11 +472,12 @@ function renderFinderCards() {
           finder[field] = event.target.checked;
         }
 
-        await saveFinderData();
+        await updateFinderRecord(finder);
         renderFinderCards();
         updateGauge();
       });
     });
+
     card.querySelector(".finder-remove-button").addEventListener("click", async () => {
       const shouldDelete = window.confirm(`Tem certeza de que deseja excluir ${finder.name}?`);
       if (!shouldDelete) {
@@ -393,13 +490,16 @@ function renderFinderCards() {
       }
 
       lastDeletedFinder = {
-        finder: { ...finder, leads: [...finder.leads] },
+        finder: {
+          ...finder,
+          leads: [...finder.leads]
+        },
         index: finderIndex,
         previousSelectedFinderId: selectedFinderId
       };
 
       finderData.splice(finderIndex, 1);
-      await saveFinderData();
+      await deleteFinderRecord(finder.id);
 
       if (selectedFinderId === finder.id) {
         selectedFinderId = finderData[0]?.id ?? null;
@@ -409,6 +509,7 @@ function renderFinderCards() {
       updateGauge();
       showUndoToast(finder.name);
     });
+
     const leadForm = card.querySelector(".lead-form");
     if (leadForm) {
       leadForm.addEventListener("submit", async (event) => {
@@ -419,59 +520,34 @@ function renderFinderCards() {
         const cnpj = String(formData.get("lead-cnpj") ?? "").trim();
         const fobValue = String(formData.get("lead-fob-value") ?? "").trim();
         const date = String(formData.get("lead-date") ?? "").trim();
-        const pdfFile = leadForm.querySelector('input[name="lead-pdf"]')?.files?.[0] ?? null;
 
         if (!company || !cnpj || !fobValue || !date) {
           return;
         }
 
-        let pdfDataUrl = "";
-        if (pdfFile) {
-          try {
-            pdfDataUrl = await readFileAsDataUrl(pdfFile);
-          } catch {
-            return;
-          }
-        }
-
-        let pdfPayload = { pdfName: "", pdfUrl: "" };
-        if (pdfDataUrl) {
-          const uploadResponse = await fetch("/api/upload-pdf", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              fileName: pdfFile.name,
-              dataUrl: pdfDataUrl
-            })
-          });
-
-          if (!uploadResponse.ok) {
-            return;
-          }
-
-          pdfPayload = await uploadResponse.json();
-        }
-
-        finder.leads.unshift({
+        const newLead = {
           company,
           cnpj,
           fobValue,
           date,
-          pdfName: pdfPayload.fileName ?? "",
-          pdfUrl: pdfPayload.pdfUrl ?? ""
+          createdAt: new Date().toISOString()
+        };
+
+        const insertedLead = await createLeadRecord(finder.id, newLead);
+        finder.leads.unshift({
+          ...newLead,
+          id: insertedLead.id,
+          createdAt: insertedLead.created_at
         });
 
-        await saveFinderData();
         renderFinderCards();
       });
     }
+
     card.querySelectorAll(".lead-remove-button").forEach((button) => {
       button.addEventListener("click", async () => {
         const leadIndex = Number(button.dataset.leadIndex);
         const lead = finder.leads[leadIndex];
-
         if (!lead) {
           return;
         }
@@ -482,10 +558,11 @@ function renderFinderCards() {
         }
 
         finder.leads.splice(leadIndex, 1);
-        await saveFinderData();
+        await deleteLeadRecord(lead.id);
         renderFinderCards();
       });
     });
+
     finderGrid.appendChild(card);
   });
 }
@@ -520,7 +597,6 @@ finderForm.addEventListener("submit", async (event) => {
     if (!requestedSignedAt) {
       return;
     }
-
     signedAt = requestedSignedAt;
   }
 
@@ -535,9 +611,8 @@ finderForm.addEventListener("submit", async (event) => {
   };
 
   finderData.push(newFinder);
-
   selectedFinderId = newFinder.id;
-  await saveFinderData();
+  await createFinderRecord(newFinder);
   finderForm.reset();
   renderFinderCards();
   updateGauge();
@@ -550,8 +625,8 @@ undoButton.addEventListener("click", async () => {
 
   finderData.splice(lastDeletedFinder.index, 0, lastDeletedFinder.finder);
   selectedFinderId = lastDeletedFinder.previousSelectedFinderId ?? lastDeletedFinder.finder.id;
+  await restoreFinderRecord(lastDeletedFinder);
   lastDeletedFinder = null;
-  await saveFinderData();
   renderFinderCards();
   updateGauge();
   hideUndoToast();
@@ -569,16 +644,18 @@ init();
 
 async function init() {
   try {
+    ensureSupabase();
     const loadedFinders = await fetchFinders();
     finderData.splice(0, finderData.length, ...(loadedFinders.length ? loadedFinders : defaultFinderData));
     selectedFinderId = null;
     renderFinderCards();
     updateGauge();
   } catch (error) {
-    finderData.splice(0, finderData.length, ...defaultFinderData);
+    finderData.splice(0, finderData.length, ...normalizeFinders(defaultFinderData));
     selectedFinderId = null;
     renderFinderCards();
     updateGauge();
-    await saveFinderData();
+    console.error(error);
+    window.alert("Configure o Supabase antes do deploy. Veja o README para preencher o arquivo supabase-config.js.");
   }
 }

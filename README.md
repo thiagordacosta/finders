@@ -1,29 +1,29 @@
 # Finders Dashboard
 
-Painel com cadastro de finders, indicacoes e upload de PDF, com persistencia em disco.
+Painel com cadastro de finders e indicacoes, com persistencia em Supabase.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/thiagordacosta/finders)
+## Deploy gratuito recomendado
 
-## Rodar localmente
+1. Crie um projeto no Supabase.
+2. Rode o SQL de [supabase-schema.sql](./supabase-schema.sql) no SQL Editor do Supabase.
+3. Copie o conteúdo de [supabase-config.example.js](./supabase-config.example.js) para [supabase-config.js](./supabase-config.js), ou edite diretamente o arquivo `supabase-config.js`.
+4. Preencha `SUPABASE_URL` e `SUPABASE_ANON_KEY`.
+5. Publique o site no Vercel, Netlify ou GitHub Pages.
+
+## Rodar localmente sem backend
+
+Abra `index.html` com um servidor estatico simples ou publique diretamente no Vercel/Netlify.
+
+Exemplo com Python:
 
 ```bash
-npm start
+python3 -m http.server 3000
 ```
 
 Abra `http://127.0.0.1:3000`.
 
-## Publicar
+## Observacoes
 
-Este projeto precisa de backend com armazenamento persistente, entao GitHub Pages sozinho nao atende.
-
-Fluxo recomendado:
-
-1. Subir este codigo para um repositorio no GitHub.
-2. Conectar o repositorio a um servico como Render.
-3. Fazer o deploy usando o arquivo `render.yaml`.
-4. Garantir que o disco persistente fique montado em `/opt/render/project/src/data`.
-
-## Persistencia
-
-- Dados: `data/finders.json`
-- PDFs: `data/uploads/`
+- O projeto agora foi preparado para persistir apenas os dados de finders e leads no Supabase.
+- O `anon key` do Supabase pode ficar no front-end, desde que o RLS esteja habilitado.
+- As policies do SQL estao abertas para facilitar seu uso imediato. Se quiser, eu posso endurecer a seguranca depois.
