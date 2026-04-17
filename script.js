@@ -208,6 +208,50 @@ async function deleteFinderRecord(finderId) {
   }
 }
 
+async function removeFinder(finder) {
+  const shouldDelete = window.confirm(`Tem certeza de que deseja excluir ${finder.name}?`);
+  if (!shouldDelete) {
+    return;
+  }
+
+  const finderIndex = finderData.findIndex((item) => item.id === finder.id);
+  if (finderIndex === -1) {
+    return;
+  }
+
+  const deletedSnapshot = {
+    finder: {
+      ...finder,
+      leads: [...finder.leads]
+    },
+    index: finderIndex,
+    previousSelectedFinderId: selectedFinderId
+  };
+
+  lastDeletedFinder = deletedSnapshot;
+  finderData.splice(finderIndex, 1);
+
+  if (selectedFinderId === finder.id) {
+    selectedFinderId = finderData[0]?.id ?? null;
+  }
+
+  renderFinderCards();
+  updateGauge();
+
+  try {
+    await deleteFinderRecord(finder.id);
+    showUndoToast(finder.name);
+  } catch (error) {
+    finderData.splice(deletedSnapshot.index, 0, deletedSnapshot.finder);
+    selectedFinderId = deletedSnapshot.previousSelectedFinderId ?? deletedSnapshot.finder.id;
+    lastDeletedFinder = null;
+    renderFinderCards();
+    updateGauge();
+    console.error(error);
+    window.alert("Nao foi possivel remover o Finder agora. Tente novamente.");
+  }
+}
+
 async function restoreFinderRecord(deletedFinder) {
   ensureSupabase();
 
@@ -540,36 +584,10 @@ function renderFinderCards() {
       });
     });
 
-    card.querySelector(".finder-remove-button").addEventListener("click", async () => {
-      const shouldDelete = window.confirm(`Tem certeza de que deseja excluir ${finder.name}?`);
-      if (!shouldDelete) {
-        return;
-      }
-
-      const finderIndex = finderData.findIndex((item) => item.id === finder.id);
-      if (finderIndex === -1) {
-        return;
-      }
-
-      lastDeletedFinder = {
-        finder: {
-          ...finder,
-          leads: [...finder.leads]
-        },
-        index: finderIndex,
-        previousSelectedFinderId: selectedFinderId
-      };
-
-      finderData.splice(finderIndex, 1);
-      await deleteFinderRecord(finder.id);
-
-      if (selectedFinderId === finder.id) {
-        selectedFinderId = finderData[0]?.id ?? null;
-      }
-
-      renderFinderCards();
-      updateGauge();
-      showUndoToast(finder.name);
+    card.querySelector(".finder-remove-button").addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await removeFinder(finder);
     });
 
     const leadForm = card.querySelector(".lead-form");
