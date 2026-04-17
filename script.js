@@ -651,6 +651,7 @@ undoCloseButton.addEventListener("click", () => {
   hideUndoToast();
 });
 
+finderData.splice(0, finderData.length, ...normalizeFinders(defaultFinderData));
 renderFinderCards();
 updateGauge();
 
@@ -666,7 +667,7 @@ async function init() {
       loadedFinders = await fetchFinders();
     }
 
-    finderData.splice(0, finderData.length, ...(loadedFinders.length ? loadedFinders : defaultFinderData));
+    finderData.splice(0, finderData.length, ...(loadedFinders.length ? loadedFinders : normalizeFinders(defaultFinderData)));
     selectedFinderId = null;
     renderFinderCards();
     updateGauge();
