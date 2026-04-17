@@ -322,7 +322,24 @@ function getEligibleFinders() {
 }
 
 function getSortedFinders() {
-  return [...finderData];
+  return [...finderData].sort((left, right) => {
+    const leftDate = parseBrazilianDate(left.signedAt);
+    const rightDate = parseBrazilianDate(right.signedAt);
+
+    if (!leftDate && !rightDate) {
+      return 0;
+    }
+
+    if (!leftDate) {
+      return 1;
+    }
+
+    if (!rightDate) {
+      return -1;
+    }
+
+    return rightDate.getTime() - leftDate.getTime();
+  });
 }
 
 function getSelectedFinder() {
