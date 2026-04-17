@@ -17,8 +17,6 @@ const initialFinderNames = [
   "Gerson - Cintia"
 ];
 
-const SIGNED_CUTOFF_DATE = "01/04/2026";
-
 const defaultFinderData = initialFinderNames.map((name) => ({
   id: slugify(name),
   name,
@@ -268,7 +266,7 @@ async function deleteLeadRecord(leadId) {
 }
 
 function isEligible(finder) {
-  return finder.sentMinute && finder.firstReferral && isSignedAfterCutoff(finder.signedAt);
+  return finder.sentMinute && finder.firstReferral;
 }
 
 function isValidBrazilianDate(value) {
@@ -308,17 +306,6 @@ function requestSignedDate(currentValue = "") {
   }
 
   return formatted;
-}
-
-function isSignedAfterCutoff(signedAt) {
-  const signedDate = parseBrazilianDate(signedAt);
-  const cutoffDate = parseBrazilianDate(SIGNED_CUTOFF_DATE);
-
-  if (!signedDate || !cutoffDate) {
-    return false;
-  }
-
-  return signedDate >= cutoffDate;
 }
 
 function getEligibleFinders() {
