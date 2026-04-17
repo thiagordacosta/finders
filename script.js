@@ -300,6 +300,55 @@ async function createLeadRecord(finderId, lead) {
   return data;
 }
 
+async function addLeadToFinder(finder, leadForm) {
+  const formData = new FormData(leadForm);
+  const company = String(formData.get("lead-company") ?? "").trim();
+  const cnpj = String(formData.get("lead-cnpj") ?? "").trim();
+  const fobValue = String(formData.get("lead-fob-value") ?? "").trim();
+  const date = String(formData.get("lead-date") ?? "").trim();
+
+  if (!company || !cnpj || !fobValue || !date) {
+    window.alert("Preencha todos os campos do LEAD antes de adicionar.");
+    return;
+  }
+
+  if (!isValidBrazilianDate(date)) {
+    window.alert("Use uma data valida no formato dd/mm/aaaa para a indicacao.");
+    return;
+  }
+
+  const submitButton = leadForm.querySelector(".submit-button");
+  if (submitButton instanceof HTMLButtonElement) {
+    submitButton.disabled = true;
+  }
+
+  const newLead = {
+    company,
+    cnpj,
+    fobValue,
+    date,
+    createdAt: new Date().toISOString()
+  };
+
+  try {
+    const insertedLead = await createLeadRecord(finder.id, newLead);
+    finder.leads.unshift({
+      ...newLead,
+      id: insertedLead.id,
+      createdAt: insertedLead.created_at
+    });
+
+    renderFinderCards();
+  } catch (error) {
+    console.error(error);
+    window.alert("Nao foi possivel adicionar o LEAD agora. Tente novamente.");
+  } finally {
+    if (submitButton instanceof HTMLButtonElement) {
+      submitButton.disabled = false;
+    }
+  }
+}
+
 async function deleteLeadRecord(leadId) {
   ensureSupabase();
 
@@ -594,33 +643,8 @@ function renderFinderCards() {
     if (leadForm) {
       leadForm.addEventListener("submit", async (event) => {
         event.preventDefault();
-
-        const formData = new FormData(leadForm);
-        const company = String(formData.get("lead-company") ?? "").trim();
-        const cnpj = String(formData.get("lead-cnpj") ?? "").trim();
-        const fobValue = String(formData.get("lead-fob-value") ?? "").trim();
-        const date = String(formData.get("lead-date") ?? "").trim();
-
-        if (!company || !cnpj || !fobValue || !date) {
-          return;
-        }
-
-        const newLead = {
-          company,
-          cnpj,
-          fobValue,
-          date,
-          createdAt: new Date().toISOString()
-        };
-
-        const insertedLead = await createLeadRecord(finder.id, newLead);
-        finder.leads.unshift({
-          ...newLead,
-          id: insertedLead.id,
-          createdAt: insertedLead.created_at
-        });
-
-        renderFinderCards();
+        event.stopPropagation();
+        await addLeadToFinder(finder, leadForm);
       });
     }
 
