@@ -313,7 +313,7 @@ function getEligibleFinders() {
 }
 
 function getSortedFinders() {
-  return [...finderData].reverse();
+  return [...finderData];
 }
 
 function getSelectedFinder() {
